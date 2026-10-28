@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
+import android.util.Log
 import android.webkit.*
 import android.webkit.WebView.HitTestResult
 import android.widget.Toast
@@ -40,12 +41,16 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ReminderManager.initChannel(this)
-        val assetLoader = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
+        
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
 
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
+            settings.databaseEnabled = true
             isLongClickable = true
             
             setOnLongClickListener { 
@@ -58,8 +63,23 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
-                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
-                override fun onPageFinished(view: WebView, url: String) { injectHook(view) }
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    val response = assetLoader.shouldInterceptRequest(request.url)
+                    if (response == null) {
+                        Log.e("WebViewError", "Failed to intercept: ${request.url}")
+                    }
+                    return response
+                }
+                
+                override fun onPageFinished(view: WebView, url: String) { 
+                    injectHook(view) 
+                }
+
+                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                    super.onReceivedError(view, request, error)
+                    Log.e("WebViewError", "Error: ${error?.errorCode} - ${error?.description} on ${request?.url}")
+                    Toast.makeText(this@MainActivity, "网页加载失败: ${error?.description}", Toast.LENGTH_LONG).show()
+                }
             }
 
             webChromeClient = object : WebChromeClient() {
@@ -105,6 +125,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
             }
 
+            // 使用和路径完全匹配的地址
             loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
         }
         setContentView(webView)
