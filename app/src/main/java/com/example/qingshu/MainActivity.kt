@@ -17,6 +17,7 @@ import android.webkit.WebView.HitTestResult
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import java.io.File
 import java.io.FileOutputStream
@@ -27,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // 1. 初始化官方资源加载器（彻底解决 ERR_INVALID_RESPONSE）
     private val assetLoader: WebViewAssetLoader by lazy {
         WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
@@ -50,18 +50,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ReminderManager.initChannel(this)
 
-        // 防多进程崩溃 & 开启网页调试
         WebView.setDataDirectorySuffix("qingshu")
         WebView.setWebContentsDebuggingEnabled(true)
 
-        // 2. 从 XML 加载布局，避免直接 new WebView 导致崩溃
         setContentView(R.layout.activity_main)
         webView = findViewById(R.id.webview)
 
         webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.allowFileAccess = false // 官方 Loader 不需要文件访问权限
+            settings.allowFileAccess = false
             settings.databaseEnabled = true
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             isLongClickable = true
@@ -75,10 +73,8 @@ class MainActivity : AppCompatActivity() {
 
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
-            // 3. 使用标准的 WebViewClient 和 Loader
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                    // 交给官方 Loader 处理，自动处理 MIME 和响应头
                     return assetLoader.shouldInterceptRequest(request.url)
                 }
                 
@@ -135,11 +131,21 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
             }
 
-            // 保持这个 URL 不变
             loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
         }
     }
 
+    // 【新增】从小组件返回App时，同步数据
+    override fun onResume() {
+        super.onResume()
+        val data = WidgetDataStore.load(this)
+        if (data != null && ::webView.isInitialized) {
+            val jsonStr = data.toString().replace("'", "\\'").replace("\n", "")
+            webView.evaluateJavascript("window.syncDataFromAndroid('$jsonStr')", null)
+        }
+    }
+
+    // 【修改】保存文件并弹窗
     fun saveFileToDownloads(bytes: ByteArray, mimeType: String, fileName: String) {
         try {
             val ext = if (mimeType.contains("pdf")) ".pdf" else if (mimeType.contains("image")) ".png" else ".csv"
@@ -148,8 +154,41 @@ class MainActivity : AppCompatActivity() {
             val file = File(path, safeName)
             val out: OutputStream = FileOutputStream(file)
             out.write(bytes); out.flush(); out.close()
-            runOnUiThread { Toast.makeText(this, "文件已保存到下载目录", Toast.LENGTH_LONG).show() }
-        } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_LONG).show() } }
+            
+            runOnUiThread { showDownloadSuccessDialog(file, mimeType) }
+        } catch (e: Exception) { 
+            runOnUiThread { Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_LONG).show() } 
+        }
+    }
+
+    // 【新增】下载成功弹窗
+    private fun showDownloadSuccessDialog(file: File, mimeType: String) {
+        AlertDialog.Builder(this)
+            .setTitle("下载成功")
+            .setMessage("文件已保存至下载目录：\n${file.name}")
+            .setPositiveButton("打开文件") { _, _ ->
+                try {
+                    val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, mimeType)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "无法打开文件，请确保手机安装了相关阅读器", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("文件目录") { _, _ ->
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(MediaStore.Downloads.EXTERNAL_CONTENT_URI, "resource/folder")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "请前往文件管理器查看", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
     }
 
     private fun saveImage(imageUrl: String?) {
