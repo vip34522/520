@@ -81,25 +81,22 @@ class HeroWidget : AppWidgetProvider() {
         textPaint.textAlign = Paint.Align.LEFT
 
         textPaint.color = Color.WHITE
-        textPaint.textSize = w * 0.1f
+        textPaint.textSize = w * 0.08f // 缩小主字号
         textPaint.isFakeBoldText = true
-        c.drawText(if (res.isActive) "经期中" else "距下次月经还有 ${res.daysToNext} 天", w * 0.06f, h * 0.55f, textPaint)
+        // 整体上移避免拥挤
+        c.drawText(if (res.isActive) "经期中" else "距下次月经还有 ${res.daysToNext} 天", w * 0.06f, h * 0.53f, textPaint)
 
-        textPaint.textSize = w * 0.045f
+        textPaint.textSize = w * 0.042f
         textPaint.color = Color.parseColor("#E0E0E0")
         textPaint.isFakeBoldText = false
-        c.drawText("预计 ${res.nextStartStr} 来潮 · 平均周期 ${res.avgCycle} 天", w * 0.06f, h * 0.68f, textPaint)
+        c.drawText("预计 ${res.nextStartStr} 来潮 · 平均周期 ${res.avgCycle} 天", w * 0.06f, h * 0.65f, textPaint)
 
         paint.color = Color.parseColor("#40FFFFFF")
-        c.drawRoundRect(RectF(w * 0.06f, h * 0.78f, w * 0.94f, h * 0.82f), 20f, 20f, paint)
+        c.drawRoundRect(RectF(w * 0.06f, h * 0.73f, w * 0.94f, h * 0.76f), 20f, 20f, paint)
         paint.color = Color.WHITE
-        c.drawRoundRect(RectF(w * 0.06f, h * 0.78f, w * 0.06f + (w * 0.88f * res.progress), h * 0.82f), 20f, 20f, paint)
+        c.drawRoundRect(RectF(w * 0.06f, h * 0.73f, w * 0.06f + (w * 0.88f * res.progress), h * 0.76f), 20f, 20f, paint)
 
-        textPaint.color = Color.WHITE
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.textSize = w * 0.045f
-        c.drawText("🌸 今天来了", w * 0.25f, h * 0.93f, textPaint)
-        c.drawText("✨ 今天走了", w * 0.75f, h * 0.93f, textPaint)
+        // 删除了在画布里画“今天来了”，因为已经在 layout 用按钮实现了
         return bmp
     }
 }
