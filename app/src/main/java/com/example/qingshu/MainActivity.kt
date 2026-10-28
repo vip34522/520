@@ -2,37 +2,20 @@ package com.example.qingshu
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
-import android.os.Bundle
-import android.os.Environment
-import android.provider.MediaStore
-import android.util.Base64
-import android.util.Log
-import android.webkit.*
-import android.webkit.WebView.HitTestResult
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStream
+// ... (保留你原来的 import)
+import android.webkit.WebView
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat // 注意改用 Compat 类
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    private val fileChooserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (filePathCallback == null) return@registerForActivityResult
-        var results: Array<Uri>? = null
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            val dataString = result.data?.dataString
-            if (dataString != null) results = arrayOf(Uri.parse(dataString))
-        }
-        filePathCallback?.onReceiveValue(results)
-        filePathCallback = null
+    // 1. 初始化官方资源加载器
+    private val assetLoader: WebViewAssetLoader by lazy {
+        WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -40,171 +23,44 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ReminderManager.initChannel(this)
 
-        webView = WebView(this).apply {
+        // 防多进程崩溃 & 开启调试（可选）
+        WebView.setDataDirectorySuffix("qingshu")
+        WebView.setWebContentsDebuggingEnabled(true)
+
+        // 2. 先从 XML 加载布局，避免直接 new WebView 在部分机型崩溃
+        setContentView(R.layout.activity_main)
+        webView = findViewById(R.id.webview)
+
+        webView.apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.allowFileAccess = true
-            settings.databaseEnabled = true
-            // 允许混合内容（加载外网 CDN 需要）
+            settings.allowFileAccess = false // 官方 Loader 不需要文件访问权限
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             isLongClickable = true
             
-            setOnLongClickListener { 
-                val result = hitTestResult
-                if (result.type == HitTestResult.IMAGE_TYPE || result.type == HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
-                    saveImage(result.extra); true
-                } else { false }
-            }
-
-            addJavascriptInterface(WebBridge(), "AndroidBridge")
+            // ... (保留你的 setOnLongClickListener 代码不变)
+            // ... (保留你的 addJavascriptInterface(WebBridge(), "AndroidBridge") 不变)
             
-            webViewClient = object : WebViewClient() {
+            // 3. 改用 WebViewClientCompat 和官方 Loader 拦截
+            webViewClient = object : WebViewClientCompat() {
+                override fun shouldInterceptRequest(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): WebResourceResponse? {
+                    // 交给官方 Loader 处理，自动处理 MIME 和响应头，彻底解决 ERR_INVALID_RESPONSE
+                    return assetLoader.shouldInterceptRequest(request.url)
+                }
+                
                 override fun onPageFinished(view: WebView, url: String) { 
                     injectHook(view) 
                 }
-
-                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                    super.onReceivedError(view, request, error)
-                    Log.e("WebViewError", "Error: ${error?.errorCode} - ${error?.description}")
-                }
             }
 
-            webChromeClient = object : WebChromeClient() {
-                override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
-                    AlertDialog.Builder(this@MainActivity).setTitle("提示").setMessage(message)
-                        .setPositiveButton("确定") { _, _ -> result?.confirm() }
-                        .setNegativeButton("取消") { _, _ -> result?.cancel() }
-                        .setOnCancelListener { result?.cancel() }.show()
-                    return true
-                }
+            // ... (保留你的 webChromeClient 和 setDownloadListener 代码不变)
 
-                override fun onShowFileChooser(webView: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?): Boolean {
-                    this@MainActivity.filePathCallback?.onReceiveValue(null)
-                    this@MainActivity.filePathCallback = callback
-                    val intent = params?.createIntent()
-                    if (intent != null) {
-                        try { fileChooserLauncher.launch(intent); return true } 
-                        catch (e: Exception) { this@MainActivity.filePathCallback = null; return false }
-                    }
-                    return false
-                }
-            }
-
-            setDownloadListener { url, _, contentDisposition, mimetype, _ ->
-                try {
-                    if (url.startsWith("data:")) {
-                        val base64Data = url.substringAfter(",")
-                        val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
-                        saveFileToDownloads(decodedBytes, mimetype, contentDisposition)
-                    } else if (url.startsWith("blob:")) {
-                        webView.evaluateJavascript("""
-                            (function(){
-                                fetch('$url').then(res=>res.blob()).then(blob=>{
-                                    var reader = new FileReader();
-                                    reader.onloadend = function() {
-                                        window.AndroidBridge.downloadBase64(reader.result, '$mimetype', '$contentDisposition');
-                                    }
-                                    reader.readAsDataURL(blob);
-                                });
-                            })();
-                        """, null)
-                    }
-                } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
-            }
-
-            // 【终极方案】直接读取文件转成字符串加载，彻底告别路径和编码错误！
-            try {
-                val html = assets.open("qingshu.html").bufferedReader().use { it.readText() }
-                // 使用本地虚拟路径作为 baseUrl，确保里面的相对路径和外网 CDN 都能正常加载
-                loadDataWithBaseURL("https://appassets.androidplatform.net/assets/", html, "text/html", "UTF-8", null)
-            } catch (e: Exception) {
-                Log.e("WebViewError", "HTML读取失败", e)
-                Toast.makeText(this@MainActivity, "网页文件读取失败", Toast.LENGTH_LONG).show()
-            }
-        }
-        setContentView(webView)
-    }
-
-    fun saveFileToDownloads(bytes: ByteArray, mimeType: String, fileName: String) {
-        try {
-            val ext = if (mimeType.contains("pdf")) ".pdf" else if (mimeType.contains("image")) ".png" else ".csv"
-            val safeName = "Qingshu_" + System.currentTimeMillis() + ext
-            val path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val file = File(path, safeName)
-            val out: OutputStream = FileOutputStream(file)
-            out.write(bytes); out.flush(); out.close()
-            runOnUiThread { Toast.makeText(this, "文件已保存到下载目录", Toast.LENGTH_LONG).show() }
-        } catch (e: Exception) { runOnUiThread { Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_LONG).show() } }
-    }
-
-    private fun saveImage(imageUrl: String?) {
-        if (imageUrl == null) return
-        try {
-            var bitmap: Bitmap? = null
-            if (imageUrl.startsWith("data:image")) {
-                val base64Data = imageUrl.substringAfter(",")
-                val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
-                bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-            }
-            if (bitmap != null) {
-                val filename = "Qingshu_Img_${System.currentTimeMillis()}.png"
-                val path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                val file = File(path, filename)
-                val out = FileOutputStream(file)
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                out.flush(); out.close()
-                MediaStore.Images.Media.insertImage(contentResolver, file.absolutePath, filename, "情书月记导出")
-                Toast.makeText(this, "图片已保存到相册！", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) { Toast.makeText(this, "保存失败：${e.message}", Toast.LENGTH_SHORT).show() }
-    }
-
-    private fun injectHook(view: WebView) {
-        val js = """
-            (function(){
-              if (window.__bridgeHooked) return;
-              window.__bridgeHooked = true;
-              const KEY = 'qingshu_period_v1';
-              const orig = Storage.prototype.setItem;
-              Storage.prototype.setItem = function(k, v){
-                orig.call(this, k, v);
-                try { if (k === KEY && window.AndroidBridge) window.AndroidBridge.syncData(v); } catch(e){}
-              };
-              try {
-                const d = localStorage.getItem(KEY);
-                if (d && window.AndroidBridge) window.AndroidBridge.syncData(d);
-              } catch(e){}
-            })();
-        """.trimIndent()
-        view.evaluateJavascript(js, null)
-    }
-
-    inner class WebBridge {
-        @JavascriptInterface
-        fun syncData(json: String) { runOnUiThread { WidgetDataStore.save(applicationContext, json) } }
-
-        @JavascriptInterface
-        fun setReminder(hour: Int, minute: Int, title: String, content: String) {
-            runOnUiThread {
-                ReminderManager.setDailyReminder(applicationContext, hour, minute, title, content)
-                Toast.makeText(applicationContext, "系统闹钟已设定: $hour:$minute", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        @JavascriptInterface
-        fun cancelReminder() {
-            runOnUiThread { ReminderManager.cancelReminder(applicationContext) }
-        }
-
-        @JavascriptInterface
-        fun downloadBase64(base64Url: String, mimeType: String, fileName: String) {
-            runOnUiThread {
-                try {
-                    val base64Data = base64Url.substringAfter(",")
-                    val decodedBytes = Base64.decode(base64Data, Base64.DEFAULT)
-                    saveFileToDownloads(decodedBytes, mimeType, fileName)
-                } catch (e: Exception) {}
-            }
+            // 4. 保持 URL 不变
+            loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
         }
     }
+    // ... (保留你其余的所有方法不变)
 }
