@@ -85,11 +85,11 @@ class MonthWidget : AppWidgetProvider() {
         val gridStartY = weekHeaderH
         val cellH = (h - gridStartY) / rows
         
-        // 计算每日状态映射
         val dayMap = mutableMapOf<String, String>()
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val res = PeriodCalc.analyze(data)
         
+        // 1. 解析实际的经期记录
         if (data != null) {
             val periods = data.optJSONArray("periods")
             if (periods != null) {
@@ -111,22 +111,16 @@ class MonthWidget : AppWidgetProvider() {
                     } catch(e:Exception){}
                 }
             }
-            // 填充预测、易孕、安全
-            if (res.nextStartStr != "--") {
-                val nextCal = Calendar.getInstance().apply { time = sdf.parse(res.nextStartStr.replace("月","-").replace("日","").let { 
-                    val parts = it.split("-")
-                    set(year, parts[0].toInt() - 1, parts[1].toInt())
-                    time 
-                }) ?: Date() }
-                // 这里为了逻辑严谨，直接简写用日期遍历，实际项目可移植网页里完整的 buildDayMap
-            }
         }
         
-        // 简单补充：预测和易孕
-        val nextStartCal = Calendar.getInstance().apply { time = Date(); add(Calendar.DAY_OF_YEAR, res.daysToNext) }
+        // 2. 用 Calendar 直接推算预测日期和易孕期（彻底避开字符串解析的类型错误）
+        val nextStartCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, if (res.daysToNext > 0) res.daysToNext else 0) }
         val nextStartKey = sdf.format(nextStartCal.time)
-        val fertileStart = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -19) }
-        val fertileEnd = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -13) }
+        
+        val fertileStartCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -19) }
+        val fertileEndCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -13) }
+        val fertileStartKey = sdf.format(fertileStartCal.time)
+        val fertileEndKey = sdf.format(fertileEndCal.time)
 
         for (r in 0 until rows) {
             for (col in 0 until 7) {
@@ -142,11 +136,12 @@ class MonthWidget : AppWidgetProvider() {
                 
                 // 判断状态
                 var state = "safe"
-                if (dayMap.containsKey(dateKey)) state = "period"
-                else {
-                    // 这里模拟算一下预测
-                    if (dateKey == nextStartKey) state = "predicted"
-                    else if (dateCal.timeInMillis >= fertileStart.timeInMillis && dateCal.timeInMillis <= fertileEnd.timeInMillis) state = "fertile"
+                if (dayMap.containsKey(dateKey)) {
+                    state = "period"
+                } else if (dateKey == nextStartKey) {
+                    state = "predicted"
+                } else if (dateKey >= fertileStartKey && dateKey <= fertileEndKey) {
+                    state = "fertile"
                 }
                 
                 if (state == "period") {
