@@ -60,15 +60,13 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
-                // 【核心修改】彻底放弃 WebViewAssetLoader，手写底层拦截
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val url = request.url.toString()
                     // 如果请求的是我们的本地域名
                     if (url.startsWith("https://appassets.androidplatform.net/assets/")) {
+                        // 【修复】把 fileName 的声明放到 try 外面
+                        val fileName = url.replace("https://appassets.androidplatform.net/assets/", "")
                         try {
-                            // 获取文件名，例如 qingshu.html
-                            val fileName = url.replace("https://appassets.androidplatform.net/assets/", "")
-                            // 从 assets 文件夹读取
                             val inputStream = assets.open(fileName)
                             
                             // 根据后缀确定 MIME 类型
@@ -93,7 +91,7 @@ class MainActivity : AppCompatActivity() {
                             return WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
                         }
                     }
-                    // 如果请求的是外网资源（如 CDN 上的 jsPDF），直接放行让系统去下载
+                    // 如果请求的是外网资源（如 CDN 上的 jsPDF），直接放行
                     return null
                 }
                 
@@ -150,7 +148,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
             }
 
-            // 保持这个 URL 不变，我们自己拦截
+            // 保持这个 URL 不变
             loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
         }
         setContentView(webView)
