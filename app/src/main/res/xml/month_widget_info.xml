@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="320dp" android:minHeight="380dp" android:targetCellWidth="6" android:targetCellHeight="5"
+    android:updatePeriodMillis="86400000" android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen"
+    android:previewImage="@drawable/preview_month" android:initialLayout="@layout/widget_month" android:description="@string/month_widget_desc" />
