@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import java.util.Calendar
@@ -17,6 +19,11 @@ object ReminderManager {
     fun initChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(CHANNEL_ID, "情书提醒", NotificationManager.IMPORTANCE_HIGH)
+            // 添加默认通知铃声和震动
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
+            channel.setSound(uri, attrs)
+            channel.enableVibration(true)
             context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
@@ -55,11 +62,14 @@ object ReminderManager {
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val title = intent.getStringExtra("title") ?: "情书月记"
-        val content = intent.getStringExtra("content") ?: "记得记录今天的身体状态哦 💗"
+        val content = intent.getStringExtra("content") ?: "记得记录今天的身体状态哦 "
         val builder = NotificationCompat.Builder(context, "qingshu_reminder")
             .setSmallIcon(R.drawable.ic_app)
             .setContentTitle(title).setContentText(content)
-            .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM) // 设为闹钟类别
+            .setDefaults(NotificationCompat.DEFAULT_ALL) // 强制响铃+震动
+            .setAutoCancel(true)
         context.getSystemService(NotificationManager::class.java)?.notify(100, builder.build())
     }
 }
