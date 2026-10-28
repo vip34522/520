@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">情书月记</string>
+    <string name="hero_widget_desc">简易卡片</string>
+    <string name="month_widget_desc">详情日历</string>
+</resources>
