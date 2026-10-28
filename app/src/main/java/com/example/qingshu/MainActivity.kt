@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ReminderManager.initChannel(this)
         
+        // 恢复官方安全加载器
         val assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
@@ -51,6 +52,8 @@ class MainActivity : AppCompatActivity() {
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
             settings.databaseEnabled = true
+            // 允许加载 http 和 https 混合内容
+            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             isLongClickable = true
             
             setOnLongClickListener { 
@@ -63,6 +66,10 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
+                // 恢复拦截器
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    return assetLoader.shouldInterceptRequest(request.url)
+                }
                 
                 override fun onPageFinished(view: WebView, url: String) { 
                     injectHook(view) 
@@ -70,8 +77,7 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     super.onReceivedError(view, request, error)
-                    Log.e("WebViewError", "Error: ${error?.errorCode} - ${error?.description} on ${request?.url}")
-                    Toast.makeText(this@MainActivity, "网页加载失败: ${error?.description}", Toast.LENGTH_LONG).show()
+                    Log.e("WebViewError", "Error: ${error?.errorCode} - ${error?.description}")
                 }
             }
 
@@ -118,8 +124,8 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
             }
 
-            // 使用和路径完全匹配的地址
-            loadUrl("file:///android_asset/qingshu.html")
+            // 换回官方加载方式
+            loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
         }
         setContentView(webView)
     }
