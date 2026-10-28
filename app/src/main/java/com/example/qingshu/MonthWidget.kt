@@ -45,7 +45,8 @@ class MonthWidget : AppWidgetProvider() {
             if (h < 380) h = 380
             
             val density = context.resources.displayMetrics.density
-            views.setImageViewBitmap(R.id.iv_month_bg, drawMonth((w * density).toInt(), ((h - 100) * density).toInt(), data, offset))
+            // 因为底部打卡按钮高度变了，画布高度稍微调整
+            views.setImageViewBitmap(R.id.iv_month_bg, drawMonth((w * density).toInt(), ((h - 80) * density).toInt(), data, offset))
 
             views.setOnClickPendingIntent(R.id.btn_prev_month, PendingIntent.getBroadcast(context, 1, Intent(context, MonthWidget::class.java).apply { action = "PREV" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             views.setOnClickPendingIntent(R.id.btn_next_month, PendingIntent.getBroadcast(context, 2, Intent(context, MonthWidget::class.java).apply { action = "NEXT" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -89,7 +90,6 @@ class MonthWidget : AppWidgetProvider() {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val res = PeriodCalc.analyze(data)
         
-        // 1. 解析实际的经期记录
         if (data != null) {
             val periods = data.optJSONArray("periods")
             if (periods != null) {
@@ -113,10 +113,12 @@ class MonthWidget : AppWidgetProvider() {
             }
         }
         
-        // 2. 用 Calendar 直接推算预测日期和易孕期（彻底避开字符串解析的类型错误）
         val nextStartCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, if (res.daysToNext > 0) res.daysToNext else 0) }
         val nextStartKey = sdf.format(nextStartCal.time)
         
+        val predEndCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, res.avgPeriod - 1) }
+        val predEndKey = sdf.format(predEndCal.time)
+
         val fertileStartCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -19) }
         val fertileEndCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -13) }
         val fertileStartKey = sdf.format(fertileStartCal.time)
@@ -134,11 +136,10 @@ class MonthWidget : AppWidgetProvider() {
                 val cy = gridStartY + cellH * r + cellH / 2f
                 val isToday = (year == today.get(Calendar.YEAR) && month == today.get(Calendar.MONTH) + 1 && d == today.get(Calendar.DAY_OF_MONTH))
                 
-                // 判断状态
-                var state = "safe"
+                var state = "none" // 默认无标记
                 if (dayMap.containsKey(dateKey)) {
                     state = "period"
-                } else if (dateKey == nextStartKey) {
+                } else if (dateKey >= nextStartKey && dateKey <= predEndKey) { // 预测多天
                     state = "predicted"
                 } else if (dateKey >= fertileStartKey && dateKey <= fertileEndKey) {
                     state = "fertile"
@@ -152,14 +153,13 @@ class MonthWidget : AppWidgetProvider() {
                     paint.color = Color.parseColor("#F59E0B"); paint.style = Paint.Style.FILL
                     c.drawCircle(cx, cy, cellW * 0.35f, paint)
                     textPaint.color = Color.WHITE
-                } else if (state == "safe") {
-                    paint.color = Color.parseColor("#10B981"); paint.style = Paint.Style.FILL
-                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
-                    textPaint.color = Color.WHITE
                 } else if (state == "predicted") {
                     paint.color = Color.parseColor("#E8507E"); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f
                     c.drawCircle(cx, cy, cellW * 0.35f, paint)
                     textPaint.color = Color.parseColor("#E8507E")
+                } else {
+                    // 无标记，黑字
+                    textPaint.color = Color.parseColor("#2B2030")
                 }
                 
                 if (isToday) {
@@ -174,7 +174,7 @@ class MonthWidget : AppWidgetProvider() {
             }
         }
         
-        // 底部图例
+        // 底部图例 (去掉了安全)
         val legendY = h - 15f
         textPaint.textSize = cellW * 0.22f
         textPaint.isFakeBoldText = false
@@ -188,13 +188,12 @@ class MonthWidget : AppWidgetProvider() {
             c.drawCircle(lx + 10f, legendY - 5f, cellW * 0.1f, paint)
             textPaint.color = Color.parseColor("#93889B")
             c.drawText(label, lx + 20f, legendY, textPaint)
-            lx += w / 4f
+            lx += w / 3f // 3个图例均分
         }
         
         drawLegend("#E8507E", "经期", false)
         drawLegend("#E8507E", "预测", true)
         drawLegend("#F59E0B", "易孕", false)
-        drawLegend("#10B981", "安全", false)
         
         return bmp
     }
