@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#e8507e">
 <title>情书月记 · 经期记录</title>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="html2canvas.min.js"></script>
+<script src="jspdf.umd.min.js"></script>
 <style>
 :root{
   --accent:#e8507e; --accent2:#ff9dbb; --accent-soft:#ffe6ef;
@@ -714,6 +714,18 @@ function syncNativeReminders() {
     }
   }
 }
+  // 接收 Android 原生同步的数据（解决小组件不同步）
+window.syncDataFromAndroid = function(jsonStr) {
+    try {
+        let remote = JSON.parse(jsonStr);
+        if (remote && remote.periods) {
+            state.periods = remote.periods;
+            state.symptoms = remote.symptoms || state.symptoms;
+            saveState();
+            render(); // 重新渲染网页
+        }
+    } catch(e) { console.log("同步失败", e); }
+};
 </script>
 </body>
 </html>
