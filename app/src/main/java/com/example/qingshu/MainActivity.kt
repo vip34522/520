@@ -63,13 +63,6 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
-                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                    val response = assetLoader.shouldInterceptRequest(request.url)
-                    if (response == null) {
-                        Log.e("WebViewError", "Failed to intercept: ${request.url}")
-                    }
-                    return response
-                }
                 
                 override fun onPageFinished(view: WebView, url: String) { 
                     injectHook(view) 
@@ -126,7 +119,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             // 使用和路径完全匹配的地址
-            loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
+            loadUrl("file:///android_asset/qingshu.html")
         }
         setContentView(webView)
     }
