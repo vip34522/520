@@ -18,7 +18,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
-import androidx.webkit.WebViewClientCompat
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -76,8 +75,8 @@ class MainActivity : AppCompatActivity() {
 
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
-            // 3. 使用官方的 WebViewClientCompat 和 Loader
-            webViewClient = object : WebViewClientCompat() {
+            // 3. 使用标准的 WebViewClient 和 Loader
+            webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     // 交给官方 Loader 处理，自动处理 MIME 和响应头
                     return assetLoader.shouldInterceptRequest(request.url)
