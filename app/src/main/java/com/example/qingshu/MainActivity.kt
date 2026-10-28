@@ -2,7 +2,6 @@ package com.example.qingshu
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -20,7 +19,6 @@ import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
-import java.io.InputStream
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -47,6 +45,7 @@ class MainActivity : AppCompatActivity() {
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
             settings.databaseEnabled = true
+            // 允许混合内容（加载外网 CDN 需要）
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             isLongClickable = true
             
@@ -60,41 +59,6 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
-                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                    val url = request.url.toString()
-                    // 如果请求的是我们的本地域名
-                    if (url.startsWith("https://appassets.androidplatform.net/assets/")) {
-                        // 【修复】把 fileName 的声明放到 try 外面
-                        val fileName = url.replace("https://appassets.androidplatform.net/assets/", "")
-                        try {
-                            val inputStream = assets.open(fileName)
-                            
-                            // 根据后缀确定 MIME 类型
-                            val mimeType = when {
-                                fileName.endsWith(".html") -> "text/html"
-                                fileName.endsWith(".css") -> "text/css"
-                                fileName.endsWith(".js") -> "application/javascript"
-                                fileName.endsWith(".png") -> "image/png"
-                                fileName.endsWith(".jpg", true) -> "image/jpeg"
-                                else -> "text/plain"
-                            }
-                            
-                            // 强制返回 UTF-8 编码的标准响应
-                            return WebResourceResponse(
-                                mimeType,
-                                "UTF-8",
-                                inputStream
-                            )
-                        } catch (e: Exception) {
-                            Log.e("WebViewError", "读取本地文件失败: $fileName", e)
-                            // 如果文件不存在，返回 404
-                            return WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
-                        }
-                    }
-                    // 如果请求的是外网资源（如 CDN 上的 jsPDF），直接放行
-                    return null
-                }
-                
                 override fun onPageFinished(view: WebView, url: String) { 
                     injectHook(view) 
                 }
@@ -148,8 +112,15 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
             }
 
-            // 保持这个 URL 不变
-            loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
+            // 【终极方案】直接读取文件转成字符串加载，彻底告别路径和编码错误！
+            try {
+                val html = assets.open("qingshu.html").bufferedReader().use { it.readText() }
+                // 使用本地虚拟路径作为 baseUrl，确保里面的相对路径和外网 CDN 都能正常加载
+                loadDataWithBaseURL("https://appassets.androidplatform.net/assets/", html, "text/html", "UTF-8", null)
+            } catch (e: Exception) {
+                Log.e("WebViewError", "HTML读取失败", e)
+                Toast.makeText(this@MainActivity, "网页文件读取失败", Toast.LENGTH_LONG).show()
+            }
         }
         setContentView(webView)
     }
