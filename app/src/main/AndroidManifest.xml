@@ -5,11 +5,23 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_app"
         android:label="@string/app_name"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+
+        <!-- 加入 FileProvider 用于打开下载的文件 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
@@ -18,7 +30,6 @@
             </intent-filter>
         </activity>
 
-        <!-- 组件 1：简易卡片 -->
         <receiver android:name=".HeroWidget" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -29,7 +40,6 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/hero_widget_info" />
         </receiver>
 
-        <!-- 组件 2：详情日历 -->
         <receiver android:name=".MonthWidget" android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
