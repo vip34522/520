@@ -17,10 +17,10 @@ import android.webkit.WebView.HitTestResult
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.webkit.WebViewAssetLoader
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.io.InputStream
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -41,18 +41,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ReminderManager.initChannel(this)
-        
-        // 恢复官方安全加载器
-        val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
-            .build()
 
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.allowFileAccess = true
             settings.databaseEnabled = true
-            // 允许加载 http 和 https 混合内容
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             isLongClickable = true
             
@@ -66,9 +60,41 @@ class MainActivity : AppCompatActivity() {
             addJavascriptInterface(WebBridge(), "AndroidBridge")
             
             webViewClient = object : WebViewClient() {
-                // 恢复拦截器
+                // 【核心修改】彻底放弃 WebViewAssetLoader，手写底层拦截
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                    return assetLoader.shouldInterceptRequest(request.url)
+                    val url = request.url.toString()
+                    // 如果请求的是我们的本地域名
+                    if (url.startsWith("https://appassets.androidplatform.net/assets/")) {
+                        try {
+                            // 获取文件名，例如 qingshu.html
+                            val fileName = url.replace("https://appassets.androidplatform.net/assets/", "")
+                            // 从 assets 文件夹读取
+                            val inputStream = assets.open(fileName)
+                            
+                            // 根据后缀确定 MIME 类型
+                            val mimeType = when {
+                                fileName.endsWith(".html") -> "text/html"
+                                fileName.endsWith(".css") -> "text/css"
+                                fileName.endsWith(".js") -> "application/javascript"
+                                fileName.endsWith(".png") -> "image/png"
+                                fileName.endsWith(".jpg", true) -> "image/jpeg"
+                                else -> "text/plain"
+                            }
+                            
+                            // 强制返回 UTF-8 编码的标准响应
+                            return WebResourceResponse(
+                                mimeType,
+                                "UTF-8",
+                                inputStream
+                            )
+                        } catch (e: Exception) {
+                            Log.e("WebViewError", "读取本地文件失败: $fileName", e)
+                            // 如果文件不存在，返回 404
+                            return WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
+                        }
+                    }
+                    // 如果请求的是外网资源（如 CDN 上的 jsPDF），直接放行让系统去下载
+                    return null
                 }
                 
                 override fun onPageFinished(view: WebView, url: String) { 
@@ -124,7 +150,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) { Toast.makeText(this@MainActivity, "下载失败", Toast.LENGTH_SHORT).show() }
             }
 
-            // 换回官方加载方式
+            // 保持这个 URL 不变，我们自己拦截
             loadUrl("https://appassets.androidplatform.net/assets/qingshu.html")
         }
         setContentView(webView)
