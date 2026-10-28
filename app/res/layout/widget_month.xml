@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#FDF6F8" android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="56dp"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingHorizontal="12dp">
+        
+        <TextView android:id="@+id/tv_month_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="16sp" android:textColor="#2B2030" android:textStyle="bold" />
+        
+        <TextView android:id="@+id/btn_prev_month" android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:text="◀" android:textColor="#E8507E" />
+        <TextView android:id="@+id/btn_today_month" android:layout_width="60dp" android:layout_height="36dp" android:gravity="center" android:text="今天" android:textColor="#E8507E" android:textStyle="bold" android:layout_marginHorizontal="8dp"/>
+        <TextView android:id="@+id/btn_next_month" android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:text="▶" android:textColor="#E8507E" />
+    </LinearLayout>
+
+    <ImageView android:id="@+id/iv_month_bg"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:scaleType="fitXY" />
+</LinearLayout>
