@@ -11,27 +11,7 @@
         <TextView android:id="@+id/btn_today_month" android:layout_width="50dp" android:layout_height="36dp" android:gravity="center" android:text="今天" android:textColor="#E8507E" android:textStyle="bold" android:layout_marginHorizontal="4dp"/>
         <TextView android:id="@+id/btn_next_month" android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:text="▶" android:textColor="#E8507E" />
     </LinearLayout>
-    <!-- 画布 -->
+    <!-- 画布：占据全部剩余空间 -->
     <ImageView android:id="@+id/iv_month_bg"
-        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:scaleType="fitXY" />
-    <!-- 底部快捷打卡：改小了高度并加了背景 -->
-    <LinearLayout
-        android:layout_width="match_parent" android:layout_height="36dp"
-        android:orientation="horizontal" android:weightSum="2" 
-        android:paddingHorizontal="12dp" android:layout_marginBottom="12dp">
-        
-        <TextView android:id="@+id/btn_m_mark_start" 
-            android:layout_width="0dp" android:layout_height="match_parent" 
-            android:layout_weight="1" android:gravity="center" 
-            android:text="🌸 今天来了" android:textColor="#E8507E" 
-            android:textSize="12sp" android:textStyle="bold" 
-            android:background="@drawable/bg_btn_translucent" android:clickable="true"/>
-            
-        <TextView android:id="@+id/btn_m_mark_end" 
-            android:layout_width="0dp" android:layout_height="match_parent" 
-            android:layout_weight="1" android:layout_marginStart="8dp" 
-            android:gravity="center" android:text="✨ 今天走了" 
-            android:textColor="#E8507E" android:textSize="12sp" android:textStyle="bold" 
-            android:background="@drawable/bg_btn_translucent" android:clickable="true"/>
-    </LinearLayout>
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:scaleType="fitXY" android:layout_marginBottom="8dp"/>
 </LinearLayout>
