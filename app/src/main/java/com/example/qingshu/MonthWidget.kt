@@ -18,8 +18,6 @@ class MonthWidget : AppWidgetProvider() {
         if (intent.action == "PREV") { WidgetDataStore.setMonthOffset(context, WidgetDataStore.getMonthOffset(context) - 1); updateAll(context) }
         else if (intent.action == "NEXT") { WidgetDataStore.setMonthOffset(context, WidgetDataStore.getMonthOffset(context) + 1); updateAll(context) }
         else if (intent.action == "TODAY") { WidgetDataStore.setMonthOffset(context, 0); updateAll(context) }
-        else if (intent.action == "com.example.qingshu.ACTION_M_START") { WidgetDataStore.quickMark(context, true); updateAll(context) }
-        else if (intent.action == "com.example.qingshu.ACTION_M_END") { WidgetDataStore.quickMark(context, false); updateAll(context) }
         else { updateAll(context) }
     }
 
@@ -45,14 +43,11 @@ class MonthWidget : AppWidgetProvider() {
             if (h < 380) h = 380
             
             val density = context.resources.displayMetrics.density
-            // 因为底部打卡按钮高度变了，画布高度稍微调整
-            views.setImageViewBitmap(R.id.iv_month_bg, drawMonth((w * density).toInt(), ((h - 80) * density).toInt(), data, offset))
+            views.setImageViewBitmap(R.id.iv_month_bg, drawMonth((w * density).toInt(), ((h - 20) * density).toInt(), data, offset))
 
             views.setOnClickPendingIntent(R.id.btn_prev_month, PendingIntent.getBroadcast(context, 1, Intent(context, MonthWidget::class.java).apply { action = "PREV" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             views.setOnClickPendingIntent(R.id.btn_next_month, PendingIntent.getBroadcast(context, 2, Intent(context, MonthWidget::class.java).apply { action = "NEXT" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             views.setOnClickPendingIntent(R.id.btn_today_month, PendingIntent.getBroadcast(context, 3, Intent(context, MonthWidget::class.java).apply { action = "TODAY" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            views.setOnClickPendingIntent(R.id.btn_m_mark_start, PendingIntent.getBroadcast(context, 4, Intent(context, MonthWidget::class.java).apply { action = "com.example.qingshu.ACTION_M_START" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            views.setOnClickPendingIntent(R.id.btn_m_mark_end, PendingIntent.getBroadcast(context, 5, Intent(context, MonthWidget::class.java).apply { action = "com.example.qingshu.ACTION_M_END" }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
 
             manager.updateAppWidget(id, views)
         }
@@ -84,12 +79,89 @@ class MonthWidget : AppWidgetProvider() {
         val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
         val rows = ceil((startPad + daysInMonth) / 7.0).toInt()
         val gridStartY = weekHeaderH
-        val cellH = (h - gridStartY) / rows
+        val cellH = (h - gridStartY - 30f) / rows
         
-        val dayMap = mutableMapOf<String, String>()
+        // 【解决3】生成全量未来 4 个月的日历 Map
+        val dayMap = generateFullDayMap(data)
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val res = PeriodCalc.analyze(data)
+
+        for (r in 0 until rows) {
+            for (col in 0 until 7) {
+                val dayIndex = r * 7 + col - startPad
+                if (dayIndex < 0 || dayIndex >= daysInMonth) continue
+                
+                val d = dayIndex + 1
+                val dateCal = Calendar.getInstance().apply { set(year, month - 1, d) }
+                val dateKey = sdf.format(dateCal.time)
+                val cx = paddingX + cellW * col + cellW / 2f
+                val cy = gridStartY + cellH * r + cellH / 2f
+                val isToday = (year == today.get(Calendar.YEAR) && month == today.get(Calendar.MONTH) + 1 && d == today.get(Calendar.DAY_OF_MONTH))
+                
+                val state = dayMap[dateKey] ?: "none"
+                
+                if (state == "period") {
+                    paint.color = Color.parseColor("#E8507E"); paint.style = Paint.Style.FILL
+                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
+                    textPaint.color = Color.WHITE
+                } else if (state == "fertile") {
+                    paint.color = Color.parseColor("#F59E0B"); paint.style = Paint.Style.FILL
+                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
+                    textPaint.color = Color.WHITE
+                } else if (state == "safe") {
+                    paint.color = Color.parseColor("#10B981"); paint.style = Paint.Style.FILL
+                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
+                    textPaint.color = Color.WHITE
+                } else if (state == "predicted") {
+                    paint.color = Color.parseColor("#E8507E"); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f
+                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
+                    textPaint.color = Color.parseColor("#E8507E")
+                } else {
+                    textPaint.color = Color.parseColor("#2B2030")
+                }
+                
+                if (isToday) {
+                    paint.style = Paint.Style.STROKE; paint.strokeWidth = 2.5f; paint.color = Color.parseColor("#FF9DBB")
+                    c.drawCircle(cx, cy, cellW * 0.42f, paint)
+                }
+                
+                textPaint.textAlign = Paint.Align.CENTER
+                textPaint.textSize = cellW * 0.35f
+                textPaint.isFakeBoldText = isToday || state == "period" || state == "fertile" || state == "safe"
+                c.drawText(d.toString(), cx, cy + textPaint.textSize/3, textPaint)
+            }
+        }
         
+        // 底部图例
+        val legendY = h - 15f
+        textPaint.textSize = cellW * 0.22f
+        textPaint.isFakeBoldText = false
+        textPaint.textAlign = Paint.Align.LEFT
+        var lx = paddingX
+        
+        fun drawLegend(colorStr: String, label: String, isStroke: Boolean) {
+            paint.style = if (isStroke) Paint.Style.STROKE else Paint.Style.FILL
+            paint.strokeWidth = 2f
+            paint.color = Color.parseColor(colorStr)
+            c.drawCircle(lx + 10f, legendY - 5f, cellW * 0.1f, paint)
+            textPaint.color = Color.parseColor("#93889B")
+            c.drawText(label, lx + 20f, legendY, textPaint)
+            lx += w / 4f
+        }
+        
+        drawLegend("#E8507E", "经期", false)
+        drawLegend("#E8507E", "预测", true)
+        drawLegend("#F59E0B", "易孕", false)
+        drawLegend("#10B981", "安全", false)
+        
+        return bmp
+    }
+
+    // 【新增】推算未来 4 个周期的完整日历映射
+    private fun generateFullDayMap(data: JSONObject?): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        
+        // 1. 真实经期
         if (data != null) {
             val periods = data.optJSONArray("periods")
             if (periods != null) {
@@ -104,7 +176,7 @@ class MonthWidget : AppWidgetProvider() {
                             val endT = (en ?: st).time
                             var curT = st.time
                             while (curT <= endT) {
-                                dayMap[sdf.format(Date(curT))] = "period"
+                                map[sdf.format(Date(curT))] = "period"
                                 curT += 86400000L
                             }
                         }
@@ -113,88 +185,56 @@ class MonthWidget : AppWidgetProvider() {
             }
         }
         
-        val nextStartCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, if (res.daysToNext > 0) res.daysToNext else 0) }
-        val nextStartKey = sdf.format(nextStartCal.time)
-        
-        val predEndCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, res.avgPeriod - 1) }
-        val predEndKey = sdf.format(predEndCal.time)
-
-        val fertileStartCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -19) }
-        val fertileEndCal = Calendar.getInstance().apply { time = nextStartCal.time; add(Calendar.DAY_OF_YEAR, -13) }
-        val fertileStartKey = sdf.format(fertileStartCal.time)
-        val fertileEndKey = sdf.format(fertileEndCal.time)
-
-        for (r in 0 until rows) {
-            for (col in 0 until 7) {
-                val dayIndex = r * 7 + col - startPad
-                if (dayIndex < 0 || dayIndex >= daysInMonth) continue
-                
-                val d = dayIndex + 1
-                val dateCal = Calendar.getInstance().apply { set(year, month - 1, d) }
-                val dateKey = sdf.format(dateCal.time)
-                val cx = paddingX + cellW * col + cellW / 2f
-                val cy = gridStartY + cellH * r + cellH / 2f
-                val isToday = (year == today.get(Calendar.YEAR) && month == today.get(Calendar.MONTH) + 1 && d == today.get(Calendar.DAY_OF_MONTH))
-                
-                var state = "none" // 默认无标记
-                if (dayMap.containsKey(dateKey)) {
-                    state = "period"
-                } else if (dateKey >= nextStartKey && dateKey <= predEndKey) { // 预测多天
-                    state = "predicted"
-                } else if (dateKey >= fertileStartKey && dateKey <= fertileEndKey) {
-                    state = "fertile"
+        // 2. 预测推算（往后推4个周期）
+        val res = PeriodCalc.analyze(data)
+        if (res.nextStartStr != "--") {
+            // 计算下一次开始的具体时间（归零时分秒）
+            val nextStartCal = Calendar.getInstance().apply { 
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_YEAR, if (res.daysToNext > 0) res.daysToNext else 0) 
+            }
+            
+            var curStartCal = nextStartCal.clone() as Calendar
+            
+            for (c in 0 until 4) {
+                // 预测经期
+                val predEndCal = curStartCal.clone() as Calendar
+                predEndCal.add(Calendar.DAY_OF_YEAR, res.avgPeriod - 1)
+                var pCal = curStartCal.clone() as Calendar
+                while (!pCal.after(predEndCal)) {
+                    val k = sdf.format(pCal.time)
+                    if (!map.containsKey(k)) map[k] = "predicted"
+                    pCal.add(Calendar.DAY_OF_YEAR, 1)
                 }
                 
-                if (state == "period") {
-                    paint.color = Color.parseColor("#E8507E"); paint.style = Paint.Style.FILL
-                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
-                    textPaint.color = Color.WHITE
-                } else if (state == "fertile") {
-                    paint.color = Color.parseColor("#F59E0B"); paint.style = Paint.Style.FILL
-                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
-                    textPaint.color = Color.WHITE
-                } else if (state == "predicted") {
-                    paint.color = Color.parseColor("#E8507E"); paint.style = Paint.Style.STROKE; paint.strokeWidth = 2f
-                    c.drawCircle(cx, cy, cellW * 0.35f, paint)
-                    textPaint.color = Color.parseColor("#E8507E")
-                } else {
-                    // 无标记，黑字
-                    textPaint.color = Color.parseColor("#2B2030")
+                // 易孕期
+                val fertileStartCal = curStartCal.clone() as Calendar
+                fertileStartCal.add(Calendar.DAY_OF_YEAR, -19)
+                val fertileEndCal = curStartCal.clone() as Calendar
+                fertileEndCal.add(Calendar.DAY_OF_YEAR, -13)
+                var fCal = fertileStartCal.clone() as Calendar
+                while (!fCal.after(fertileEndCal)) {
+                    val k = sdf.format(fCal.time)
+                    if (!map.containsKey(k)) map[k] = "fertile"
+                    fCal.add(Calendar.DAY_OF_YEAR, 1)
                 }
                 
-                if (isToday) {
-                    paint.style = Paint.Style.STROKE; paint.strokeWidth = 2.5f; paint.color = Color.parseColor("#FF9DBB")
-                    c.drawCircle(cx, cy, cellW * 0.42f, paint)
+                // 安全期
+                val safeStartCal = fertileEndCal.clone() as Calendar
+                safeStartCal.add(Calendar.DAY_OF_YEAR, 1)
+                val safeEndCal = curStartCal.clone() as Calendar
+                safeEndCal.add(Calendar.DAY_OF_YEAR, -1)
+                var sCal = safeStartCal.clone() as Calendar
+                while (!sCal.after(safeEndCal)) {
+                    val k = sdf.format(sCal.time)
+                    if (!map.containsKey(k)) map[k] = "safe"
+                    sCal.add(Calendar.DAY_OF_YEAR, 1)
                 }
                 
-                textPaint.textAlign = Paint.Align.CENTER
-                textPaint.textSize = cellW * 0.35f
-                textPaint.isFakeBoldText = isToday || state == "period" || state == "fertile"
-                c.drawText(d.toString(), cx, cy + textPaint.textSize/3, textPaint)
+                // 加上本次周期天数，推算下个月
+                curStartCal.add(Calendar.DAY_OF_YEAR, res.avgCycle)
             }
         }
-        
-        // 底部图例 (去掉了安全)
-        val legendY = h - 15f
-        textPaint.textSize = cellW * 0.22f
-        textPaint.isFakeBoldText = false
-        textPaint.textAlign = Paint.Align.LEFT
-        var lx = paddingX
-        
-        fun drawLegend(colorStr: String, label: String, isStroke: Boolean) {
-            paint.style = if (isStroke) Paint.Style.STROKE else Paint.Style.FILL
-            paint.strokeWidth = 2f
-            paint.color = Color.parseColor(colorStr)
-            c.drawCircle(lx + 10f, legendY - 5f, cellW * 0.1f, paint)
-            textPaint.color = Color.parseColor("#93889B")
-            c.drawText(label, lx + 20f, legendY, textPaint)
-            lx += w / 3f // 3个图例均分
-        }
-        
-        drawLegend("#E8507E", "经期", false)
-        drawLegend("#E8507E", "预测", true)
-        drawLegend("#F59E0B", "易孕", false)
-        
-        return bmp
+        return map
     }
 }
