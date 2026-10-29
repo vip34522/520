@@ -2,7 +2,7 @@ package com.example.qingshu
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.content.Context
+import android.app.DownloadManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -21,7 +21,6 @@ import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.io.OutputStream
 
 class MainActivity : AppCompatActivity() {
@@ -77,14 +76,8 @@ class MainActivity : AppCompatActivity() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     return assetLoader.shouldInterceptRequest(request.url)
                 }
-                
                 override fun onPageFinished(view: WebView, url: String) { 
                     injectHook(view) 
-                }
-
-                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                    super.onReceivedError(view, request, error)
-                    Log.e("WebViewError", "Error: ${error?.errorCode} - ${error?.description}")
                 }
             }
 
@@ -135,7 +128,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 【新增】从小组件返回App时，同步数据
     override fun onResume() {
         super.onResume()
         val data = WidgetDataStore.load(this)
@@ -145,7 +137,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 【修改】保存文件并弹窗
     fun saveFileToDownloads(bytes: ByteArray, mimeType: String, fileName: String) {
         try {
             val ext = if (mimeType.contains("pdf")) ".pdf" else if (mimeType.contains("image")) ".png" else ".csv"
@@ -154,14 +145,12 @@ class MainActivity : AppCompatActivity() {
             val file = File(path, safeName)
             val out: OutputStream = FileOutputStream(file)
             out.write(bytes); out.flush(); out.close()
-            
             runOnUiThread { showDownloadSuccessDialog(file, mimeType) }
         } catch (e: Exception) { 
             runOnUiThread { Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_LONG).show() } 
         }
     }
 
-    // 【新增】下载成功弹窗
     private fun showDownloadSuccessDialog(file: File, mimeType: String) {
         AlertDialog.Builder(this)
             .setTitle("下载成功")
@@ -180,12 +169,13 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("文件目录") { _, _ ->
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(MediaStore.Downloads.EXTERNAL_CONTENT_URI, "resource/folder")
-                    }
+                    // 【解决7】直接打开系统的“下载”管理器
+                    val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
                     startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(this, "请前往文件管理器查看", Toast.LENGTH_SHORT).show()
+                    // 如果手机没有系统下载管理器，则调起系统文件选择器
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "*/*" }
+                    startActivity(Intent.createChooser(intent, "请选择文件管理器"))
                 }
             }
             .show()
