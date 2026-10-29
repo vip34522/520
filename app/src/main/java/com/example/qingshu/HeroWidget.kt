@@ -7,14 +7,24 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.*
 import android.widget.RemoteViews
+import android.widget.Toast
 import java.util.*
 
 class HeroWidget : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == "com.example.qingshu.ACTION_START") WidgetDataStore.quickMark(context, true)
-        else if (intent.action == "com.example.qingshu.ACTION_END") WidgetDataStore.quickMark(context, false)
-        updateAll(context)
+        val action = intent.action
+        
+        if (action == "com.example.qingshu.ACTION_START" || action == "com.example.qingshu.ACTION_END") {
+            val isStart = action == "com.example.qingshu.ACTION_START"
+            // 直接打卡，无需密码
+            WidgetDataStore.quickMark(context, isStart)
+            // 【解决6】明确的 Toast 打卡反馈
+            Toast.makeText(context, if (isStart) "已记录：今天来了 🌸" else "已记录：今天走了 ✨", Toast.LENGTH_SHORT).show()
+            updateAll(context)
+        } else {
+            updateAll(context)
+        }
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -81,22 +91,23 @@ class HeroWidget : AppWidgetProvider() {
         textPaint.textAlign = Paint.Align.LEFT
 
         textPaint.color = Color.WHITE
-        textPaint.textSize = w * 0.08f // 缩小主字号
+        textPaint.textSize = w * 0.08f
         textPaint.isFakeBoldText = true
-        // 整体上移避免拥挤
-        c.drawText(if (res.isActive) "经期中" else "距下次月经还有 ${res.daysToNext} 天", w * 0.06f, h * 0.53f, textPaint)
+        // 【解决1】主文字整体大幅上移，避免与底部按钮重叠
+        c.drawText(if (res.isActive) "经期中" else "距下次月经还有 ${res.daysToNext} 天", w * 0.06f, h * 0.40f, textPaint)
 
         textPaint.textSize = w * 0.042f
         textPaint.color = Color.parseColor("#E0E0E0")
         textPaint.isFakeBoldText = false
-        c.drawText("预计 ${res.nextStartStr} 来潮 · 平均周期 ${res.avgCycle} 天", w * 0.06f, h * 0.65f, textPaint)
+        // 【解决1】副标题上移
+        c.drawText("预计 ${res.nextStartStr} 来潮 · 平均周期 ${res.avgCycle} 天", w * 0.06f, h * 0.52f, textPaint)
 
+        // 【解决1】进度条上移
         paint.color = Color.parseColor("#40FFFFFF")
-        c.drawRoundRect(RectF(w * 0.06f, h * 0.73f, w * 0.94f, h * 0.76f), 20f, 20f, paint)
+        c.drawRoundRect(RectF(w * 0.06f, h * 0.62f, w * 0.94f, h * 0.65f), 20f, 20f, paint)
         paint.color = Color.WHITE
-        c.drawRoundRect(RectF(w * 0.06f, h * 0.73f, w * 0.06f + (w * 0.88f * res.progress), h * 0.76f), 20f, 20f, paint)
+        c.drawRoundRect(RectF(w * 0.06f, h * 0.62f, w * 0.06f + (w * 0.88f * res.progress), h * 0.65f), 20f, 20f, paint)
 
-        // 删除了在画布里画“今天来了”，因为已经在 layout 用按钮实现了
         return bmp
     }
 }
